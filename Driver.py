@@ -49,8 +49,8 @@ class Driver():
 
     def selectYear(self,index):
         years = self.fe('/html/body/app-root/app-main/section/app-content/app-logged-data/div[1]/div/select[2]')
-        # skip 0th ('Years') and 1st (2017)
-        years = years.find_elements(By.TAG_NAME,'option')[2:]
+        # skip 0th ('Years') and 2017-2021
+        years = years.find_elements(By.TAG_NAME,'option')[6:]
         years[index].click()
     
     def scrollToBottom(self,className):

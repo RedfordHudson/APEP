@@ -2,6 +2,8 @@
 
 import os
 
+import pandas as pd
+
 def getPaths(directory,extension):
     paths = filter(lambda path:path.find(extension)!=-1,os.listdir(directory))
     paths = map(lambda path:os.path.join(directory, path),paths)
@@ -24,6 +26,29 @@ def getTableName(bus):
 def log(tier,str):
     print('=='*2*tier + ( ' [ %s'  % str))
 
+import json
+def getDate():
+    with open("date.json", "r") as file:
+        return json.load(file)
+
+def iterateDate():
+    with open("date.json", "r+") as file:
+        data = json.load(file)
+
+        data["month"] += 1
+        if data["month"] == 12:
+            data["month"] = 0
+            data["year"] += 1
+
+        # move the file cursor back to the beginning of the file
+        file.seek(0)
+
+        # write the updated JSON data to the file
+        json.dump(data, file, indent=4)
+
+        # truncate the remaining file contents
+        file.truncate()
+
 # ========= [ Transporter ] =========
 
 from datetime import date
@@ -44,78 +69,44 @@ class Transporter():
         self.org_paths = {}
         for bus in range(1,21):
             self.org_paths[bus] = []
-    
-    def testCreateTable(self):
-        
 
-        self.db.connect()
+        self.replace = False
 
-        time.sleep(5)
-
-        self.createTables()
-
-        self.db.commit()
-
-        self.db.close()
-        
     def transport(self):
+        
+        # get date to transport
+        date = getDate()
+        year = int(date['year'])
+        month = int(date['month'])
+
+        if not (year or month):
+            self.replace = True
+        
+        print(self.replace)
+
+        # fabricate HAMS web portal
         self.driver.connect()
-
         self.driver.selectAllVehicles()
-
-        years = self.driver.getYears()
-
-        self.db.connect()
-
         time.sleep(5)
+        self.driver.selectYear(year)
+        self.driver.selectMonth(month)
 
-        self.createTables()
-
-        current_month = int(date.today().strftime("%m"))
-
-        for year in range(len(years)):
-            log(1,'Transporting for Year: %s' % years[year])
-
-            self.driver.selectYear(year)
-
-            months = self.driver.getMonths()
-
-            for month in range(12):                
-                # data only exists after 2018 April
-                if year == 0 and month <= 2:
-                    continue
-                # skip 2018 and 2019
-                elif year < 2:
-                    continue
-                # skip future months
-                elif year == len(years)-1 and month >= current_month:
-                    break
-
-                log(2,'Transporting for Month: %s' % months[month])
-
-                self.driver.selectMonth(month)
-
-                self.transportForMonth()
-
-        self.db.close()
+        # transfer data
+        log(1,'Transporting for %s/%s' % (2022+year,1+month))
+        self.transportForMonth()
         
+        # update date
+        iterateDate()
         log(1,'Complete')
-    
-    def createTables(self):
-        log(1,'Creating Tables')
-        
-        for bus in self.org_paths.keys():
-            # wipe
-            # DELETE FROM test LIMIT 10
-            table = getTableName(bus)
-            self.db.createTable(table)
-        
-        self.db.commit()
     
     def transportForMonth(self):
         paths = self.download()
         self.process(paths)
+
+        self.db.connect()
         self.upload()
+        self.db.close()
+
         self.flush()
     
     def download(self):
@@ -168,26 +159,19 @@ class Transporter():
 
         for bus in self.org_paths.keys():
             log(4,'Transporting for Bus: %s' % bus)
+            
+            rep = self.replace
+
             for path in self.org_paths[bus]:
                 table = getTableName(bus)
-                self.db.pushCSVToDatabase(table,path)
-
-            self.db.commit()
+                df = pd.read_csv(path)
+                self.db.pushDF(table,df,rep)
+                
+                # only replace for the VERY FIRST PUSH
+                rep = False
     
     def flush(self):
         erasePaths(map(lambda path:os.path.join('.\\data', path),os.listdir('.\\data')))
-
-    def test(self,path,table):
-
-        self.db.connect()
-        
-        self.db.createTable(table)
-        self.db.commit()
-
-        self.db.pushCSVToDatabase(table,path)
-        self.db.commit()
-
-        self.db.close()
 
 # workflow (terminal + browser):
 # cd 'C:\Program Files\Google\Chrome\Application’
